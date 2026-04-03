@@ -418,6 +418,24 @@ function App() {
       )}
 
       <FileList items={sorted} parentSize={usedSize} onItemClick={navigate} />
+
+      <div style={{
+        marginTop: "48px",
+        paddingTop: "16px",
+        borderTop: "1px solid #1e293b",
+        textAlign: "right",
+      }}>
+        <a href="https://github.com/Sloy/disk-usage" target="_blank" rel="noopener noreferrer"
+          style={{
+            fontSize: "12px",
+            color: "#475569",
+            textDecoration: "none",
+            transition: "color 0.2s",
+          }}
+          onMouseEnter={(e) => e.target.style.color = "#64748b"}
+          onMouseLeave={(e) => e.target.style.color = "#475569"}
+        >Made by Rafa with ♥</a>
+      </div>
     </div>
   );
 }
