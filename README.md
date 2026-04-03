@@ -2,6 +2,8 @@
 
 A lightweight, self-hosted web app for visualizing disk usage with an interactive donut chart and file browser.
 
+![screenshot](screenshot.png)
+
 ## Features
 
 - **Interactive donut chart** — click to drill into folders, hover to see sizes
@@ -11,6 +13,10 @@ A lightweight, self-hosted web app for visualizing disk usage with an interactiv
 - **Rescan from the UI** — trigger a rescan without SSH
 - **Auto-rescan** — periodic cron-based rescans in the background
 - **Tiny footprint** — Python only, no dependencies, ~60MB Docker image
+
+## Some context (AI disclosure)
+Hi! It's me, a human! I wrote this small web based app to see my NAS disk usage the way I want it. After looking for different options, none of them suited what I wanted. So I built this little thing.
+Unlike the rest of the project, this paragraph was written by an actual human. Everything else was created by Claude (and guided by me). But I know shit about css, python or docker. So use this at your own risk. 
 
 ## Quick Start
 

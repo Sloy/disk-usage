@@ -4,3 +4,4 @@ LICENSE
 .dockerignore
 docker-compose.yml
 screenshot.png
+www/
