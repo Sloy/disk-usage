@@ -4,6 +4,14 @@ A lightweight, self-hosted web app for visualizing disk usage with an interactiv
 
 ![screenshot](screenshot.png)
 
+- [Features](#features)
+- [Quick Start](#quick-start)
+- [Configuration](#configuration)
+- [API](#api)
+- [Proxmox LXC Deployment](#proxmox-lxc-deployment)
+- [Local Development](#local-development)
+- [How It Works](#how-it-works)
+
 ## Features
 
 - **Interactive donut chart** — click to drill into folders, hover to see sizes
