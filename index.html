@@ -18,6 +18,12 @@
     margin: 0 auto;
     padding: 40px 20px;
   }
+  .header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    margin-bottom: 32px;
+  }
   h1 {
     font-size: 22px;
     font-weight: 700;
@@ -28,8 +34,26 @@
   .subtitle {
     font-size: 13px;
     color: #64748b;
-    margin-bottom: 32px;
   }
+  .rescan-btn {
+    background: none;
+    border: 1px solid #334155;
+    color: #94a3b8;
+    font-family: 'DM Sans', sans-serif;
+    font-size: 13px;
+    padding: 6px 14px;
+    border-radius: 6px;
+    cursor: pointer;
+    transition: all 0.2s;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    white-space: nowrap;
+  }
+  .rescan-btn:hover { border-color: #6366f1; color: #e2e8f0; }
+  .rescan-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+  .rescan-btn .icon { display: inline-block; }
+  .rescan-btn.scanning .icon { animation: spin 1s linear infinite; }
   .breadcrumbs {
     display: flex;
     align-items: center;
@@ -46,6 +70,13 @@
     display: flex;
     justify-content: center;
     margin-bottom: 32px;
+  }
+  .scan-time {
+    font-size: 12px;
+    color: #475569;
+    margin-top: -24px;
+    margin-bottom: 24px;
+    text-align: center;
   }
   .file-row {
     display: grid;
@@ -127,13 +158,6 @@
     text-align: center;
     padding: 20px;
   }
-  .scan-time {
-    font-size: 12px;
-    color: #475569;
-    margin-top: -24px;
-    margin-bottom: 24px;
-    text-align: center;
-  }
 </style>
 </head>
 <body>
@@ -142,7 +166,7 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.9/babel.min.js"></script>
 <script type="text/babel">
-const { useState, useEffect } = React;
+const { useState, useEffect, useCallback } = React;
 
 const COLORS = [
   "#6366f1", "#f59e0b", "#10b981", "#ef4444",
@@ -159,6 +183,14 @@ function formatSize(bytes) {
   return bytes + " B";
 }
 
+function timeAgo(ts) {
+  const s = Math.floor((Date.now() / 1000) - ts);
+  if (s < 60) return "just now";
+  if (s < 3600) return Math.floor(s / 60) + "m ago";
+  if (s < 86400) return Math.floor(s / 3600) + "h ago";
+  return Math.floor(s / 86400) + "d ago";
+}
+
 function PieChart({ items, freeSpace, onSliceClick }) {
   const size = 280;
   const cx = size / 2;
@@ -169,10 +201,10 @@ function PieChart({ items, freeSpace, onSliceClick }) {
   const [hovered, setHovered] = useState(null);
 
   let angle = -Math.PI / 2;
-  const slices = [];
 
   const makeSlice = (startAngle, endAngle, r, color, key, onClick, hoverIdx) => {
     const a = endAngle - startAngle;
+    if (a < 0.005) return null;
     const x1 = cx + Math.cos(startAngle) * r;
     const y1 = cy + Math.sin(startAngle) * r;
     const x2 = cx + Math.cos(endAngle) * r;
@@ -197,6 +229,7 @@ function PieChart({ items, freeSpace, onSliceClick }) {
     );
   };
 
+  const slices = [];
   items.forEach((item, i) => {
     const frac = item.size / total;
     const a = frac * Math.PI * 2;
@@ -265,18 +298,57 @@ function App() {
   const [error, setError] = useState(null);
   const [path, setPath] = useState([]);
   const [currentNode, setCurrentNode] = useState(null);
-  const [scanTime, setScanTime] = useState(null);
+  const [scanning, setScanning] = useState(false);
+  const [lastScan, setLastScan] = useState(null);
 
-  useEffect(() => {
-    fetch("data.json")
+  const loadData = useCallback(() => {
+    fetch("data.json?t=" + Date.now())
       .then(r => {
-        if (!r.ok) throw new Error("data.json not found. Run scan.py first.");
-        setScanTime(new Date(r.headers.get("last-modified")));
+        if (!r.ok) throw new Error("data.json not found. Run a scan first.");
         return r.json();
       })
-      .then(d => { setData(d); setCurrentNode(d); })
+      .then(d => {
+        setData(d);
+        setCurrentNode(prev => {
+          if (!prev || path.length === 0) return d;
+          // Try to stay on the same path after reload
+          let node = d;
+          for (const p of path) {
+            const child = node.children?.find(c => c.name === p.name);
+            if (!child) return d;
+            node = child;
+          }
+          return node;
+        });
+      })
       .catch(e => setError(e.message));
-  }, []);
+  }, [path]);
+
+  const checkStatus = useCallback(() => {
+    fetch("/api/status")
+      .then(r => r.json())
+      .then(s => {
+        setScanning(s.scanning);
+        setLastScan(s.last_scan);
+        if (!s.scanning && scanning) {
+          // Scan just finished, reload data
+          loadData();
+        }
+      })
+      .catch(() => {});
+  }, [scanning, loadData]);
+
+  useEffect(() => { loadData(); }, []);
+  useEffect(() => {
+    const interval = setInterval(checkStatus, 3000);
+    return () => clearInterval(interval);
+  }, [checkStatus]);
+
+  const triggerRescan = () => {
+    setScanning(true);
+    fetch("/api/rescan", { method: "POST" })
+      .catch(() => setScanning(false));
+  };
 
   if (error) return <div className="error"><span>⚠️</span><span>{error}</span></div>;
   if (!data) return <div className="loading"><div className="spinner" /><span>Loading...</span></div>;
@@ -303,10 +375,19 @@ function App() {
 
   return (
     <div className="container">
-      <h1>Disk Usage</h1>
-      <p className="subtitle">
-        {formatSize(usedSize)} used · {isRoot ? formatSize(data.freeSpace) + " free" : formatSize(currentNode.size) + " total"}
-      </p>
+      <div className="header">
+        <div>
+          <h1>Disk Usage</h1>
+          <p className="subtitle">
+            {formatSize(usedSize)} used · {isRoot ? formatSize(data.freeSpace) + " free" : formatSize(currentNode.size) + " total"}
+          </p>
+        </div>
+        <button className={`rescan-btn ${scanning ? "scanning" : ""}`}
+          onClick={triggerRescan} disabled={scanning}>
+          <span className="icon">↻</span>
+          {scanning ? "Scanning..." : "Rescan"}
+        </button>
+      </div>
 
       <div className="breadcrumbs">
         {breadcrumbs.map((node, i) => (
@@ -326,8 +407,8 @@ function App() {
 
       <PieChart items={sorted} freeSpace={isRoot ? data.freeSpace : null} onSliceClick={navigate} />
 
-      {scanTime && (
-        <p className="scan-time">Last scan: {scanTime.toLocaleString()}</p>
+      {lastScan && (
+        <p className="scan-time">Last scan: {timeAgo(lastScan)}</p>
       )}
 
       {path.length > 0 && (
