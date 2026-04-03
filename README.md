@@ -96,9 +96,20 @@ pct exec <CTID> -- bash -c "
   cd /opt/disk-usage
   git pull
   docker compose up -d --build
-  echo \"Open http://\$(hostname -I | awk '{print \$1}'):8888\"
 "
 ```
+
+## Local Development
+
+No Docker needed. Just Python 3:
+
+```bash
+cd disk-usage
+python3 scan.py ~/Downloads        # scan any local folder
+python3 server.py                  # serves at http://localhost:8888
+```
+
+Edit `index.html` directly, delete `www/index.html`, and restart the server to pick up changes.
 
 ## How It Works
 
