@@ -11,6 +11,7 @@ RUN chmod +x /app/entrypoint.sh /app/scan.py
 EXPOSE 8888
 
 ENV SCAN_PATH=/data
+ENV SCAN_NAME=Storage
 ENV SCAN_INTERVAL=6h
 
 ENTRYPOINT ["/app/entrypoint.sh"]

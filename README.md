@@ -57,6 +57,7 @@ docker run -d \
 | Environment Variable | Default | Description |
 |---------------------|---------|-------------|
 | `SCAN_PATH` | `/data` | Path to scan inside the container |
+| `SCAN_NAME` | `Storage` | Display name shown in the UI for the root folder |
 | `SCAN_INTERVAL` | `6h` | Time between automatic rescans (e.g., `1h`, `12h`, `1d`) |
 
 ## Manual Rescan

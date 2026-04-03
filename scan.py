@@ -53,6 +53,10 @@ def main():
     print(f"Scanning {scan_path}...")
     tree = scan_dir(scan_path)
 
+    # Override display name if set
+    display_name = os.environ.get("SCAN_NAME", os.path.basename(scan_path) or "Storage")
+    tree["name"] = display_name
+
     # Get disk space info
     usage = shutil.disk_usage(scan_path)
     tree["totalCapacity"] = usage.total

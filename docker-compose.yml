@@ -9,4 +9,5 @@ services:
       - /mnt/storage:/data:ro
     environment:
       - SCAN_PATH=/data
+      - SCAN_NAME=Storage
       - SCAN_INTERVAL=6h
