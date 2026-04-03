@@ -8,6 +8,7 @@ WORKDIR /app
 COPY scan.py /app/scan.py
 COPY server.py /app/server.py
 COPY index.html /app/www/index.html
+COPY favicon.svg /app/www/favicon.svg
 COPY entrypoint.sh /app/entrypoint.sh
 
 RUN chmod +x /app/entrypoint.sh /app/scan.py /app/server.py

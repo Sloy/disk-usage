@@ -84,13 +84,14 @@ def run_scan():
 
 
 if __name__ == "__main__":
-    # Ensure www dir has index.html for local dev
+    # Ensure www dir has static files for local dev
     os.makedirs(WWW_DIR, exist_ok=True)
-    local_index = os.path.join(SCRIPT_DIR, "index.html")
-    www_index = os.path.join(WWW_DIR, "index.html")
-    if os.path.exists(local_index) and not os.path.exists(www_index):
-        import shutil
-        shutil.copy2(local_index, www_index)
+    for filename in ["index.html", "favicon.svg"]:
+        src = os.path.join(SCRIPT_DIR, filename)
+        dst = os.path.join(WWW_DIR, filename)
+        if os.path.exists(src) and not os.path.exists(dst):
+            import shutil
+            shutil.copy2(src, dst)
 
     port = int(os.environ.get("PORT", 8888))
     server = http.server.HTTPServer(("0.0.0.0", port), Handler)
