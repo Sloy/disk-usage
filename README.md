@@ -85,6 +85,7 @@ pct exec <CTID> -- bash -c "
   git clone https://github.com/Sloy/disk-usage.git
   cd disk-usage
   docker compose up -d
+  echo \"Open http://\$(hostname -I | awk '{print \$1}'):8888\"
 "
 ```
 
@@ -95,6 +96,7 @@ pct exec <CTID> -- bash -c "
   cd /opt/disk-usage
   git pull
   docker compose up -d --build
+  echo \"Open http://\$(hostname -I | awk '{print \$1}'):8888\"
 "
 ```
 
