@@ -1,0 +1,12 @@
+services:
+  disk-usage:
+    build: .
+    container_name: disk-usage
+    restart: unless-stopped
+    ports:
+      - "8888:8888"
+    volumes:
+      - /mnt/storage:/data:ro
+    environment:
+      - SCAN_PATH=/data
+      - SCAN_INTERVAL=6h

@@ -1,0 +1,347 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Disk Usage</title>
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    background: #0f172a;
+    color: #e2e8f0;
+    font-family: 'DM Sans', sans-serif;
+    min-height: 100vh;
+  }
+  .container {
+    max-width: 640px;
+    margin: 0 auto;
+    padding: 40px 20px;
+  }
+  h1 {
+    font-size: 22px;
+    font-weight: 700;
+    color: #f8fafc;
+    letter-spacing: -0.02em;
+    margin-bottom: 4px;
+  }
+  .subtitle {
+    font-size: 13px;
+    color: #64748b;
+    margin-bottom: 32px;
+  }
+  .breadcrumbs {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin-bottom: 24px;
+    font-size: 13px;
+    flex-wrap: wrap;
+  }
+  .breadcrumb { color: #6366f1; cursor: pointer; }
+  .breadcrumb:hover { text-decoration: underline; }
+  .breadcrumb-current { color: #f8fafc; font-weight: 600; }
+  .breadcrumb-sep { color: #475569; }
+  .chart-container {
+    display: flex;
+    justify-content: center;
+    margin-bottom: 32px;
+  }
+  .file-row {
+    display: grid;
+    grid-template-columns: 1fr 100px 80px;
+    align-items: center;
+    padding: 10px 16px;
+    border-radius: 8px;
+    transition: background 0.15s;
+  }
+  .file-row:hover { background: #1e293b; }
+  .file-row.clickable { cursor: pointer; }
+  .file-name {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    min-width: 0;
+  }
+  .file-icon { font-size: 14px; opacity: 0.5; width: 16px; text-align: center; }
+  .file-label {
+    font-size: 14px;
+    color: #e2e8f0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .file-bar-container { display: flex; align-items: center; }
+  .file-bar {
+    height: 4px;
+    border-radius: 2px;
+    min-width: 2px;
+    transition: width 0.3s;
+  }
+  .file-size {
+    font-size: 13px;
+    color: #94a3b8;
+    font-family: 'DM Mono', monospace;
+    text-align: right;
+  }
+  .back-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 10px 16px;
+    border-radius: 8px;
+    cursor: pointer;
+    font-size: 14px;
+    color: #94a3b8;
+    transition: background 0.15s;
+  }
+  .back-row:hover { background: #1e293b; }
+  .loading {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    height: 100vh;
+    gap: 16px;
+    color: #64748b;
+    font-size: 14px;
+  }
+  .spinner {
+    width: 32px;
+    height: 32px;
+    border: 3px solid #1e293b;
+    border-top-color: #6366f1;
+    border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .error {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    height: 100vh;
+    gap: 12px;
+    color: #ef4444;
+    font-size: 14px;
+    text-align: center;
+    padding: 20px;
+  }
+  .scan-time {
+    font-size: 12px;
+    color: #475569;
+    margin-top: -24px;
+    margin-bottom: 24px;
+    text-align: center;
+  }
+</style>
+</head>
+<body>
+<div id="root"></div>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.9/babel.min.js"></script>
+<script type="text/babel">
+const { useState, useEffect } = React;
+
+const COLORS = [
+  "#6366f1", "#f59e0b", "#10b981", "#ef4444",
+  "#8b5cf6", "#06b6d4", "#f97316", "#ec4899",
+  "#14b8a6", "#a855f7", "#eab308", "#3b82f6",
+];
+const FREE_COLOR = "#1e293b";
+
+function formatSize(bytes) {
+  if (bytes >= 1024 ** 4) return (bytes / 1024 ** 4).toFixed(2) + " TB";
+  if (bytes >= 1024 ** 3) return (bytes / 1024 ** 3).toFixed(1) + " GB";
+  if (bytes >= 1024 ** 2) return (bytes / 1024 ** 2).toFixed(1) + " MB";
+  if (bytes >= 1024) return (bytes / 1024).toFixed(1) + " KB";
+  return bytes + " B";
+}
+
+function PieChart({ items, freeSpace, onSliceClick }) {
+  const size = 280;
+  const cx = size / 2;
+  const cy = size / 2;
+  const outerRadius = 130;
+  const innerRadius = 75;
+  const total = items.reduce((sum, item) => sum + item.size, 0) + (freeSpace || 0);
+  const [hovered, setHovered] = useState(null);
+
+  let angle = -Math.PI / 2;
+  const slices = [];
+
+  const makeSlice = (startAngle, endAngle, r, color, key, onClick, hoverIdx) => {
+    const a = endAngle - startAngle;
+    const x1 = cx + Math.cos(startAngle) * r;
+    const y1 = cy + Math.sin(startAngle) * r;
+    const x2 = cx + Math.cos(endAngle) * r;
+    const y2 = cy + Math.sin(endAngle) * r;
+    const ix1 = cx + Math.cos(startAngle) * innerRadius;
+    const iy1 = cy + Math.sin(startAngle) * innerRadius;
+    const ix2 = cx + Math.cos(endAngle) * innerRadius;
+    const iy2 = cy + Math.sin(endAngle) * innerRadius;
+    const la = a > Math.PI ? 1 : 0;
+    const d = `M ${ix1} ${iy1} L ${x1} ${y1} A ${r} ${r} 0 ${la} 1 ${x2} ${y2} L ${ix2} ${iy2} A ${innerRadius} ${innerRadius} 0 ${la} 0 ${ix1} ${iy1}`;
+    return (
+      <path key={key} d={d} fill={color} stroke="#0f172a" strokeWidth="2"
+        style={{
+          cursor: onClick ? "pointer" : "default",
+          opacity: hovered !== null && hovered !== hoverIdx ? 0.45 : 1,
+          transition: "opacity 0.2s",
+        }}
+        onMouseEnter={() => setHovered(hoverIdx)}
+        onMouseLeave={() => setHovered(null)}
+        onClick={onClick}
+      />
+    );
+  };
+
+  items.forEach((item, i) => {
+    const frac = item.size / total;
+    const a = frac * Math.PI * 2;
+    const r = hovered === i ? outerRadius + 6 : outerRadius;
+    slices.push(makeSlice(angle, angle + a, r, COLORS[i % COLORS.length], `s${i}`,
+      item.children ? () => onSliceClick(item) : null, i));
+    angle += a;
+  });
+
+  if (freeSpace > 0) {
+    const frac = freeSpace / total;
+    const a = frac * Math.PI * 2;
+    const r = hovered === -1 ? outerRadius + 6 : outerRadius;
+    slices.push(makeSlice(angle, angle + a, r, FREE_COLOR, "free", null, -1));
+  }
+
+  const hi = hovered === -1
+    ? { name: "Free space", size: freeSpace }
+    : hovered !== null ? items[hovered] : null;
+
+  return (
+    <div className="chart-container">
+      <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`}>
+        {slices}
+        <text x={cx} y={cy - 8} textAnchor="middle" fill="#e2e8f0"
+          style={{ fontSize: "13px", fontFamily: "'DM Sans', sans-serif" }}>
+          {hi ? hi.name : "Total used"}
+        </text>
+        <text x={cx} y={cy + 14} textAnchor="middle" fill="#f8fafc"
+          style={{ fontSize: "18px", fontWeight: 600, fontFamily: "'DM Sans', sans-serif" }}>
+          {hi ? formatSize(hi.size) : formatSize(total - (freeSpace || 0))}
+        </text>
+      </svg>
+    </div>
+  );
+}
+
+function FileList({ items, parentSize, onItemClick }) {
+  const maxSize = Math.max(...items.map(i => i.size));
+  return (
+    <div>
+      {items.map((item, i) => {
+        const barW = (item.size / maxSize) * 100;
+        const isDir = !!item.children;
+        return (
+          <div key={item.name} className={`file-row ${isDir ? "clickable" : ""}`}
+            onClick={() => isDir && onItemClick(item)}>
+            <div className="file-name">
+              <span className="file-icon">{isDir ? "📁" : "📄"}</span>
+              <span className="file-label">{item.name}</span>
+            </div>
+            <div className="file-bar-container">
+              <div className="file-bar"
+                style={{ width: `${barW}%`, background: COLORS[i % COLORS.length] }} />
+            </div>
+            <span className="file-size">{formatSize(item.size)}</span>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+function App() {
+  const [data, setData] = useState(null);
+  const [error, setError] = useState(null);
+  const [path, setPath] = useState([]);
+  const [currentNode, setCurrentNode] = useState(null);
+  const [scanTime, setScanTime] = useState(null);
+
+  useEffect(() => {
+    fetch("data.json")
+      .then(r => {
+        if (!r.ok) throw new Error("data.json not found. Run scan.py first.");
+        setScanTime(new Date(r.headers.get("last-modified")));
+        return r.json();
+      })
+      .then(d => { setData(d); setCurrentNode(d); })
+      .catch(e => setError(e.message));
+  }, []);
+
+  if (error) return <div className="error"><span>⚠️</span><span>{error}</span></div>;
+  if (!data) return <div className="loading"><div className="spinner" /><span>Loading...</span></div>;
+
+  const navigate = (item) => {
+    if (item.children) {
+      setPath([...path, currentNode]);
+      setCurrentNode(item);
+    }
+  };
+  const goBack = () => {
+    if (path.length > 0) {
+      const p = [...path];
+      setCurrentNode(p.pop());
+      setPath(p);
+    }
+  };
+  const goToRoot = () => { setPath([]); setCurrentNode(data); };
+
+  const breadcrumbs = [data, ...path, currentNode].filter((v, i, a) => a.indexOf(v) === i);
+  const isRoot = path.length === 0;
+  const sorted = [...(currentNode.children || [])].sort((a, b) => b.size - a.size);
+  const usedSize = sorted.reduce((s, c) => s + c.size, 0);
+
+  return (
+    <div className="container">
+      <h1>Disk Usage</h1>
+      <p className="subtitle">
+        {formatSize(usedSize)} used · {isRoot ? formatSize(data.freeSpace) + " free" : formatSize(currentNode.size) + " total"}
+      </p>
+
+      <div className="breadcrumbs">
+        {breadcrumbs.map((node, i) => (
+          <span key={i} style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+            {i > 0 && <span className="breadcrumb-sep">/</span>}
+            {i < breadcrumbs.length - 1 ? (
+              <span className="breadcrumb" onClick={() => {
+                if (i === 0) goToRoot();
+                else { setPath(path.slice(0, i - 1)); setCurrentNode(breadcrumbs[i]); }
+              }}>{node.name}</span>
+            ) : (
+              <span className="breadcrumb-current">{node.name}</span>
+            )}
+          </span>
+        ))}
+      </div>
+
+      <PieChart items={sorted} freeSpace={isRoot ? data.freeSpace : null} onSliceClick={navigate} />
+
+      {scanTime && (
+        <p className="scan-time">Last scan: {scanTime.toLocaleString()}</p>
+      )}
+
+      {path.length > 0 && (
+        <div className="back-row" onClick={goBack}>
+          <span>←</span><span>..</span>
+        </div>
+      )}
+
+      <FileList items={sorted} parentSize={usedSize} onItemClick={navigate} />
+    </div>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById("root")).render(<App />);
+</script>
+</body>
+</html>
