@@ -48,7 +48,9 @@ def scan_dir(path):
 
 def main():
     scan_path = sys.argv[1] if len(sys.argv) > 1 else "/mnt/storage"
-    output_path = sys.argv[2] if len(sys.argv) > 2 else "/var/www/disk-usage/data.json"
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    default_output = "/app/www/data.json" if os.path.exists("/app/www") else os.path.join(script_dir, "www", "data.json")
+    output_path = sys.argv[2] if len(sys.argv) > 2 else default_output
 
     print(f"Scanning {scan_path}...")
     tree = scan_dir(scan_path)

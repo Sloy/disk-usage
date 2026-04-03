@@ -8,8 +8,10 @@ import subprocess
 import threading
 
 SCAN_PATH = os.environ.get("SCAN_PATH", "/data")
-DATA_FILE = "/app/www/data.json"
-SCAN_SCRIPT = "/app/scan.py"
+SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
+WWW_DIR = "/app/www" if os.path.exists("/app/www") else os.path.join(SCRIPT_DIR, "www")
+DATA_FILE = os.path.join(WWW_DIR, "data.json")
+SCAN_SCRIPT = os.path.join(SCRIPT_DIR, "scan.py")
 
 scanning_lock = threading.Lock()
 is_scanning = False
@@ -17,7 +19,7 @@ is_scanning = False
 
 class Handler(http.server.SimpleHTTPRequestHandler):
     def __init__(self, *args, **kwargs):
-        super().__init__(*args, directory="/app/www", **kwargs)
+        super().__init__(*args, directory=WWW_DIR, **kwargs)
 
     def do_POST(self):
         if self.path == "/api/rescan":
@@ -82,6 +84,14 @@ def run_scan():
 
 
 if __name__ == "__main__":
+    # Ensure www dir has index.html for local dev
+    os.makedirs(WWW_DIR, exist_ok=True)
+    local_index = os.path.join(SCRIPT_DIR, "index.html")
+    www_index = os.path.join(WWW_DIR, "index.html")
+    if os.path.exists(local_index) and not os.path.exists(www_index):
+        import shutil
+        shutil.copy2(local_index, www_index)
+
     port = int(os.environ.get("PORT", 8888))
     server = http.server.HTTPServer(("0.0.0.0", port), Handler)
     print(f"Serving at http://0.0.0.0:{port}", flush=True)
