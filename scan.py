@@ -46,30 +46,34 @@ def scan_dir(path):
     return result
 
 
-def main():
-    scan_path = sys.argv[1] if len(sys.argv) > 1 else "/mnt/storage"
-    script_dir = os.path.dirname(os.path.abspath(__file__))
-    default_output = "/app/www/data.json" if os.path.exists("/app/www") else os.path.join(script_dir, "www", "data.json")
-    output_path = sys.argv[2] if len(sys.argv) > 2 else default_output
-
-    print(f"Scanning {scan_path}...")
+def scan_to_file(scan_path, output_path, display_name):
+    """Scan scan_path, write the JSON tree to output_path, return the tree."""
+    print(f"Scanning {scan_path} as '{display_name}'...", flush=True)
     tree = scan_dir(scan_path)
-
-    # Override display name if set
-    display_name = os.environ.get("SCAN_NAME", os.path.basename(scan_path) or "Storage")
     tree["name"] = display_name
-
-    # Get disk space info
     usage = shutil.disk_usage(scan_path)
     tree["totalCapacity"] = usage.total
     tree["freeSpace"] = usage.free
-
-    os.makedirs(os.path.dirname(output_path), exist_ok=True)
+    os.makedirs(os.path.dirname(os.path.abspath(output_path)), exist_ok=True)
     with open(output_path, "w") as f:
         json.dump(tree, f)
+    print(f"Done. {tree['size'] / (1024**3):.1f} GB -> {output_path}", flush=True)
+    return tree
 
-    print(f"Done. {tree['size'] / (1024**3):.1f} GB scanned.")
-    print(f"Written to {output_path}")
+
+def main():
+    scan_path = sys.argv[1] if len(sys.argv) > 1 else "/mnt/storage"
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    default_output = (
+        "/app/www/data-1.json" if os.path.exists("/app/www")
+        else os.path.join(script_dir, "www", "data-1.json")
+    )
+    output_path = sys.argv[2] if len(sys.argv) > 2 else default_output
+    display_name = (
+        sys.argv[3] if len(sys.argv) > 3
+        else os.environ.get("SCAN_NAME") or os.path.basename(scan_path.rstrip("/")) or "Storage"
+    )
+    scan_to_file(scan_path, output_path, display_name)
 
 
 if __name__ == "__main__":
