@@ -93,6 +93,32 @@ function App() {
     return () => window.removeEventListener("hashchange", apply);
   }, []);
 
+  // Poll status for the current root; reload data when a scan completes.
+  const wasScanning = useRef(false);
+  useEffect(() => {
+    if (rootId == null) return;
+    const tick = () => fetch(`/api/status?root=${rootId}`).then(r => r.json())
+      .then(s => {
+        setScanning(s.scanning);
+        setLastScan(s.last_scan);
+        if (wasScanning.current && !s.scanning) loadData(); // stays on namePath
+        wasScanning.current = s.scanning;
+      }).catch(() => {});
+    tick();
+    const iv = setInterval(tick, 3000);
+    return () => clearInterval(iv);
+  }, [rootId, loadData]);
+
+  const triggerRescan = () => {
+    setScanning(true);
+    wasScanning.current = true;
+    fetch("/api/rescan", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ root: rootId }),
+    }).catch(() => setScanning(false));
+  };
+
   if (error) return html`<div className="error"><span>⚠️</span><span>${error}</span></div>`;
   if (!roots || rootId == null) return html`<div className="loading"><div className="spinner"/><span>Loading…</span></div>`;
 
@@ -114,7 +140,14 @@ function App() {
       <div className="header">
         <div>
           <h1>Disk Usage</h1>
-          <p className="subtitle">${currentNode ? formatSize(currentNode.size || (currentNode.children||[]).reduce((s,c)=>s+c.size,0)) + " used" : "No scan yet"}</p>
+          <p className="subtitle">${currentNode ? formatSize((currentNode.children||[]).reduce((s,c)=>s+c.size,0)) + " used" : "No scan yet"}</p>
+        </div>
+        <div style=${{display:"flex", gap:"8px", alignItems:"center"}}>
+          <${RootSwitcher} roots=${roots} rootId=${rootId} onSwitch=${switchRoot}/>
+          <button className=${"rescan-btn " + (scanning ? "scanning" : "")}
+            onClick=${triggerRescan} disabled=${scanning}>
+            <span className="icon">↻</span>${scanning ? "Scanning…" : "Rescan"}
+          </button>
         </div>
       </div>
       ${!tree && html`<p className="scan-time">No data for this disk yet — a scan is running.</p>`}
@@ -122,14 +155,71 @@ function App() {
         root=${currentRoot} tree=${tree} currentNode=${currentNode}
         namePath=${resolved.resolvedPath}
         hovered=${hovered} setHovered=${setHovered}
-        navigateTo=${navigateTo} />`}
+        navigateTo=${navigateTo}
+        lastScan=${lastScan}
+        freeSpace=${resolved.resolvedPath.length === 0 ? tree.freeSpace : null} />`}
     </div>`;
 }
 
-// Placeholder — fleshed out in later tasks.
-function Body({ currentNode }) {
-  const sorted = [...(currentNode.children || [])].sort((a, b) => b.size - a.size);
-  return html`<div>${sorted.map(c => html`<div key=${c.name}>${c.name} — ${formatSize(c.size)}</div>`)}</div>`;
+function RootSwitcher({ roots, rootId, onSwitch }) {
+  if (roots.length < 2) return null;
+  return html`<select className="root-switcher" value=${rootId}
+    onChange=${e => onSwitch(Number(e.target.value))}>
+    ${roots.map(r => html`<option key=${r.id} value=${r.id}>${r.name}</option>`)}
+  </select>`;
 }
+
+function Breadcrumbs({ rootName, namePath, onNavigate }) {
+  const crumbs = [rootName, ...namePath];
+  return html`<div className="breadcrumbs">
+    ${crumbs.map((name, i) => html`<span key=${i} style=${{display:"flex",alignItems:"center",gap:"6px"}}>
+      ${i > 0 && html`<span className="breadcrumb-sep">/</span>`}
+      ${i < crumbs.length - 1
+        ? html`<span className="breadcrumb" onClick=${() => onNavigate(namePath.slice(0, i))}>${name}</span>`
+        : html`<span className="breadcrumb-current">${name}</span>`}
+    </span>`)}
+  </div>`;
+}
+
+function FileList({ items, hovered, setHovered, onItemClick }) {
+  const maxSize = Math.max(1, ...items.map(i => i.size));
+  return html`<div>
+    ${items.map((item, i) => {
+      const isDir = !!item.children;
+      const active = hovered === i;
+      return html`<div key=${item.name}
+        className=${"file-row " + (isDir ? "clickable " : "") + (active ? "active" : "")}
+        onMouseEnter=${() => setHovered(i)} onMouseLeave=${() => setHovered(null)}
+        onClick=${() => isDir && onItemClick(item)}>
+        <div className="file-name">
+          <span className="file-icon">${isDir ? "📁" : "📄"}</span>
+          <span className="file-label">${item.name}</span>
+        </div>
+        <div className="file-bar-container">
+          <div className="file-bar" style=${{width: (item.size / maxSize) * 100 + "%", background: COLORS[i % COLORS.length]}}/>
+        </div>
+        <span className="file-size">${formatSize(item.size)}</span>
+      </div>`;
+    })}
+  </div>`;
+}
+
+function Body({ root, currentNode, namePath, hovered, setHovered, navigateTo,
+                lastScan, freeSpace }) {
+  const sorted = [...(currentNode.children || [])].sort((a, b) => b.size - a.size);
+  const enterDir = (item) => navigateTo([...namePath, item.name]);
+  return html`
+    <${Breadcrumbs} rootName=${root.name} namePath=${namePath}
+      onNavigate=${(p) => navigateTo(p)}/>
+    <${PieChart} items=${sorted} freeSpace=${freeSpace}
+      hovered=${hovered} setHovered=${setHovered} onSliceClick=${enterDir}/>
+    ${lastScan && html`<p className="scan-time">Last scan: ${timeAgo(lastScan)}</p>`}
+    ${namePath.length > 0 && html`<div className="back-row"
+      onClick=${() => navigateTo(namePath.slice(0, -1))}><span>←</span><span>..</span></div>`}
+    <${FileList} items=${sorted} hovered=${hovered} setHovered=${setHovered}
+      onItemClick=${enterDir}/>`;
+}
+
+function PieChart() { return null; }
 
 ReactDOM.createRoot(document.getElementById("root")).render(html`<${App}/>`);
