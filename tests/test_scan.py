@@ -35,5 +35,27 @@ class TestScanToFile(unittest.TestCase):
             del os.environ["SCAN_NAME"]
 
 
+import roots as roots_mod
+from scan_all import scan_all
+
+
+class TestScanAll(unittest.TestCase):
+    def test_scans_each_root_into_own_file(self):
+        base = tempfile.mkdtemp()
+        a = os.path.join(base, "a"); os.makedirs(a)
+        b = os.path.join(base, "b"); os.makedirs(b)
+        open(os.path.join(a, "x"), "wb").write(b"y" * 10)
+        www = os.path.join(base, "www"); os.makedirs(www)
+        env = {"SCAN_PATH_1": a, "SCAN_NAME_1": "Aye",
+               "SCAN_PATH_2": b, "SCAN_NAME_2": "Bee"}
+
+        scan_all(env, www)
+
+        with open(os.path.join(www, "data-1.json")) as f:
+            self.assertEqual(json.load(f)["name"], "Aye")
+        with open(os.path.join(www, "data-2.json")) as f:
+            self.assertEqual(json.load(f)["name"], "Bee")
+
+
 if __name__ == "__main__":
     unittest.main()
