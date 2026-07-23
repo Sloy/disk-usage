@@ -220,6 +220,103 @@ function Body({ root, currentNode, namePath, hovered, setHovered, navigateTo,
       onItemClick=${enterDir}/>`;
 }
 
-function PieChart() { return null; }
+function PieChart({ items, freeSpace, hovered, setHovered, onSliceClick }) {
+  const size = 280, cx = 140, cy = 140, outerR = 130, innerR = 75;
+  const total = items.reduce((s, it) => s + it.size, 0) + (freeSpace || 0) || 1;
+
+  // Build target slices (keyed by list index; free slice = FREE_KEY).
+  const targets = [];
+  let acc = -Math.PI / 2;
+  items.forEach((it, i) => {
+    const sweep = (it.size / total) * Math.PI * 2;
+    targets.push({ key: i, start: acc, sweep, color: COLORS[i % COLORS.length],
+      item: it, size: it.size });
+    acc += sweep;
+  });
+  if (freeSpace > 0) {
+    const sweep = (freeSpace / total) * Math.PI * 2;
+    targets.push({ key: FREE_KEY, start: acc, sweep, color: FREE_COLOR,
+      item: { name: "Free space", size: freeSpace }, size: freeSpace });
+  }
+
+  const [frame, setFrame] = useState(targets);
+  const frameRef = useRef(targets);  // latest ON-SCREEN frame — animate FROM this
+  const rafRef = useRef(0);
+
+  // Fingerprint the slice set + sizes. The effect re-runs ONLY when this changes,
+  // so hover re-renders (which produce a new `items` array ref but identical sizes)
+  // never restart the tween. Interrupts continue from the on-screen frame, not the
+  // unreached target, so mid-flight drills/rescans blend instead of snapping.
+  const sig = targets.map(s => `${s.key}:${s.size.toFixed(0)}`).join("|");
+
+  useEffect(() => {
+    const from = frameRef.current;
+    const to = targets;
+    if (!from || from.length === 0) { frameRef.current = to; setFrame(to); return; }
+    const fromByKey = Object.fromEntries(from.map(s => [s.key, s]));
+    const toByKey = Object.fromEntries(to.map(s => [s.key, s]));
+    const keys = [...new Set([...from.map(s => s.key), ...to.map(s => s.key)])];
+    const start = performance.now();
+    const dur = 400;
+    const ease = t => t < 0.5 ? 2*t*t : 1 - Math.pow(-2*t+2, 2)/2;
+    const step = (now) => {
+      const t = Math.min(1, (now - start) / dur);
+      const e = ease(t);
+      const interp = keys.map(k => {
+        const a = fromByKey[k], b = toByKey[k];
+        const s0 = a || { start: b.start, sweep: 0, color: b.color, item: b.item, size: 0 };
+        const s1 = b || { start: a.start, sweep: 0, color: a.color, item: a.item, size: 0 };
+        return {
+          key: k, color: s1.color || s0.color, item: s1.item || s0.item,
+          start: s0.start + (s1.start - s0.start) * e,
+          sweep: s0.sweep + (s1.sweep - s0.sweep) * e,
+          size: (s1.size ?? 0),
+        };
+      }).filter(s => s.sweep > 0.0001);
+      frameRef.current = interp;  // capture on-screen state for a clean interrupt
+      setFrame(interp);
+      if (t < 1) rafRef.current = requestAnimationFrame(step);
+    };
+    cancelAnimationFrame(rafRef.current);
+    rafRef.current = requestAnimationFrame(step);
+    return () => cancelAnimationFrame(rafRef.current);
+    // eslint-disable-next-line
+  }, [sig]);
+
+  const arc = (s) => {
+    const r = hovered === s.key ? outerR + 6 : outerR;
+    const a0 = s.start, a1 = s.start + s.sweep;
+    const x1 = cx + Math.cos(a0)*r, y1 = cy + Math.sin(a0)*r;
+    const x2 = cx + Math.cos(a1)*r, y2 = cy + Math.sin(a1)*r;
+    const ix1 = cx + Math.cos(a0)*innerR, iy1 = cy + Math.sin(a0)*innerR;
+    const ix2 = cx + Math.cos(a1)*innerR, iy2 = cy + Math.sin(a1)*innerR;
+    const la = s.sweep > Math.PI ? 1 : 0;
+    return `M ${ix1} ${iy1} L ${x1} ${y1} A ${r} ${r} 0 ${la} 1 ${x2} ${y2} L ${ix2} ${iy2} A ${innerR} ${innerR} 0 ${la} 0 ${ix1} ${iy1}`;
+  };
+
+  const hi = hovered != null
+    ? (frame.find(s => s.key === hovered) || {}).item
+    : null;
+  const usedTotal = total - (freeSpace || 0);
+
+  return html`<div className="chart-container">
+    <svg width=${size} height=${size} viewBox=${`0 0 ${size} ${size}`}>
+      ${frame.map(s => html`<path key=${s.key} d=${arc(s)} fill=${s.color}
+        stroke="#0f172a" strokeWidth="2"
+        style=${{cursor: (s.item && s.item.children) ? "pointer" : "default",
+          opacity: hovered !== null && hovered !== s.key ? 0.45 : 1,
+          transition: "opacity 0.2s"}}
+        onMouseEnter=${() => setHovered(s.key)}
+        onMouseLeave=${() => setHovered(null)}
+        onClick=${() => s.item && s.item.children && onSliceClick(s.item)}/>`)}
+      <text x=${cx} y=${cy-8} textAnchor="middle" fill="#e2e8f0"
+        style=${{fontSize:"13px", fontFamily:"'DM Sans',sans-serif"}}>
+        ${hi ? hi.name : "Total used"}</text>
+      <text x=${cx} y=${cy+14} textAnchor="middle" fill="#f8fafc"
+        style=${{fontSize:"18px", fontWeight:600, fontFamily:"'DM Sans',sans-serif"}}>
+        ${hi ? formatSize(hi.size) : formatSize(usedTotal)}</text>
+    </svg>
+  </div>`;
+}
 
 ReactDOM.createRoot(document.getElementById("root")).render(html`<${App}/>`);
