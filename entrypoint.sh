@@ -1,33 +1,21 @@
 #!/bin/sh
-
 echo "=== Disk Usage Visualizer ==="
-echo "Scan path: $SCAN_PATH"
-echo "Rescan interval: ${SCAN_INTERVAL:-6h}"
+echo "Rescan interval: ${SCAN_INTERVAL:-1d}"
 
-# Run initial scan
-python3 /app/scan.py "$SCAN_PATH" /app/www/data.json
-
-# Set up cron for periodic rescans
+# Daily-by-default cron expression from SCAN_INTERVAL.
 CRON_EXPR=$(python3 -c "
-interval = '${SCAN_INTERVAL:-6h}'
-num = int(interval[:-1])
-unit = interval[-1]
-if unit == 'h':
-    print(f'0 */{num} * * *')
-elif unit == 'd':
-    print(f'0 0 */{num} * *')
-elif unit == 'm':
-    print(f'*/{num} * * * *')
-else:
-    print('0 */6 * * *')
+i='${SCAN_INTERVAL:-1d}'; n=i[:-1]; u=i[-1]
+print('0 3 * * *' if i=='1d' else (f'0 */{n} * * *' if u=='h' else (f'*/{n} * * * *' if u=='m' else '0 3 * * *')))
 ")
-
-echo "$CRON_EXPR python3 /app/scan.py $SCAN_PATH /app/www/data.json >> /proc/1/fd/1 2>&1" > /etc/cron.d/disk-scan
+echo "$CRON_EXPR . /app/scan.env; python3 /app/scan_all.py /app/www >> /proc/1/fd/1 2>&1" > /etc/cron.d/disk-scan
 chmod 0644 /etc/cron.d/disk-scan
 crontab /etc/cron.d/disk-scan
 
-# Start cron daemon in background
-cron
+# Persist SCAN_* env for cron (cron runs with a bare environment).
+# Quote values so disk names/paths with spaces survive `. /app/scan.env`.
+env | grep -E '^SCAN_(PATH|NAME)' \
+  | sed -E 's/^([^=]+)=(.*)$/export \1="\2"/' > /app/scan.env
 
-# Start web server
+cron
+# Server does the initial scan in the background; startup is not blocked.
 python3 /app/server.py

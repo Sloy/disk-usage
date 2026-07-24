@@ -6,8 +6,11 @@ services:
     ports:
       - "8888:8888"
     volumes:
-      - /mnt/storage:/data:ro
+      - /mnt/storage:/data1:ro
+      - /mnt/backup:/data2:ro
     environment:
-      - SCAN_PATH=/data
-      - SCAN_NAME=Storage
-      - SCAN_INTERVAL=6h
+      - SCAN_PATH_1=/data1
+      - SCAN_NAME_1=Storage
+      - SCAN_PATH_2=/data2
+      - SCAN_NAME_2=Backup
+      - SCAN_INTERVAL=1d
