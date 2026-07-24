@@ -158,6 +158,10 @@ function App() {
         navigateTo=${navigateTo}
         lastScan=${lastScan}
         freeSpace=${resolved.resolvedPath.length === 0 ? tree.freeSpace : null} />`}
+      <div style=${{marginTop:"48px",paddingTop:"16px",borderTop:"1px solid #1e293b",textAlign:"right"}}>
+        <a href="https://github.com/rafavg/disk-usage" target="_blank" rel="noopener noreferrer"
+          style=${{fontSize:"12px",color:"#475569",textDecoration:"none"}}>Made by Rafa with ♥︎</a>
+      </div>
     </div>`;
 }
 
