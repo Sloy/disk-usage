@@ -35,12 +35,15 @@ fi
 # Create install directory
 mkdir -p "$INSTALL_DIR/www"
 
-# Copy app files
-cp "$SCRIPT_DIR/scan.py" "$SCRIPT_DIR/scan_all.py" "$SCRIPT_DIR/server.py" \
-   "$SCRIPT_DIR/roots.py" "$INSTALL_DIR/"
-cp "$SCRIPT_DIR/index.html" "$SCRIPT_DIR/app.js" "$SCRIPT_DIR/favicon.svg" "$INSTALL_DIR/"
-mkdir -p "$INSTALL_DIR/vendor"
-cp "$SCRIPT_DIR"/vendor/*.js "$INSTALL_DIR/vendor/"
+# Copy app files (skip when running in-place, e.g. repo cloned directly
+# into $INSTALL_DIR and updated via `git pull && bash install.sh`).
+if [ "$SCRIPT_DIR" != "$INSTALL_DIR" ]; then
+    cp "$SCRIPT_DIR/scan.py" "$SCRIPT_DIR/scan_all.py" "$SCRIPT_DIR/server.py" \
+       "$SCRIPT_DIR/roots.py" "$INSTALL_DIR/"
+    cp "$SCRIPT_DIR/index.html" "$SCRIPT_DIR/app.js" "$SCRIPT_DIR/favicon.svg" "$INSTALL_DIR/"
+    mkdir -p "$INSTALL_DIR/vendor"
+    cp "$SCRIPT_DIR"/vendor/*.js "$INSTALL_DIR/vendor/"
+fi
 chmod +x "$INSTALL_DIR/scan.py" "$INSTALL_DIR/scan_all.py" "$INSTALL_DIR/server.py"
 # Remove the pre-multi-root data file (new code reads data-<id>.json); harmless if absent.
 rm -f "$INSTALL_DIR/www/data.json"
