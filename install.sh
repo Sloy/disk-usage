@@ -22,6 +22,30 @@ if [ "$(id -u)" -ne 0 ]; then
     exit 1
 fi
 
+# If the service is already running via Docker, the native systemd install
+# below would conflict with it (same port, competing process). Detect and
+# bail out (or offer to upgrade the Docker deployment instead) before doing
+# any other work.
+if docker ps --filter "name=^/disk-usage$" --format '{{.Names}}' 2>/dev/null | grep -q .; then
+    echo "Detected disk-usage already running via Docker."
+    echo "The native install would conflict with it (same port)."
+    do_upgrade=false
+    if [ "${AUTO_DOCKER_UPGRADE:-}" = "1" ]; then
+        do_upgrade=true
+    elif [ -t 0 ]; then
+        read -r -p "Upgrade the Docker deployment instead? [y/N] " reply
+        [[ "$reply" =~ ^[Yy]$ ]] && do_upgrade=true
+    fi
+    if [ "$do_upgrade" = true ]; then
+        echo "Upgrading Docker deployment..."
+        (cd "$SCRIPT_DIR" && docker compose up -d --build)
+    else
+        echo "To upgrade manually, run:"
+        echo "  cd $SCRIPT_DIR && git pull && docker compose up -d --build"
+    fi
+    exit 0
+fi
+
 # Stop existing services if running
 systemctl stop disk-usage disk-usage-scan.timer 2>/dev/null || true
 
