@@ -35,7 +35,7 @@ Unlike the rest of the project, this paragraph was written by an actual human. E
 No Docker needed. Installs as a systemd service, minimal RAM.
 
 ```bash
-git clone https://github.com/rafavg/disk-usage.git
+git clone https://github.com/Sloy/disk-usage.git
 cd disk-usage
 SCAN_PATH_1=/mnt/storage SCAN_NAME_1=Storage sudo bash install.sh
 ```
@@ -119,7 +119,7 @@ pct set <CTID> -mp0 /mnt/storage,mp=/mnt/storage,ro=1
 pct exec <CTID> -- bash -c "
   apt install -y git
   cd /opt
-  git clone https://github.com/rafavg/disk-usage.git
+  git clone https://github.com/Sloy/disk-usage.git
   cd disk-usage
   SCAN_PATH_1=/mnt/storage SCAN_NAME_1=Storage bash install.sh
 "
@@ -156,7 +156,7 @@ pct set <CTID> -mp0 /mnt/storage,mp=/mnt/storage,ro=1
 pct exec <CTID> -- bash -c "
   apt install -y git
   cd /opt
-  git clone https://github.com/rafavg/disk-usage.git
+  git clone https://github.com/Sloy/disk-usage.git
   cd disk-usage
   docker compose up -d
   echo \"Open http://\$(hostname -I | awk '{print \$1}'):8888\"
