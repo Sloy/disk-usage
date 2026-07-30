@@ -69,11 +69,35 @@ docker compose up -d
 
 Open `http://localhost:8888`
 
+To update:
+
+```bash
+git pull
+docker compose up -d --build
+```
+
 ### Docker Run
 
 ```bash
 docker build -t disk-usage .
 
+docker run -d \
+  --name disk-usage \
+  --restart unless-stopped \
+  -p 8888:8888 \
+  -v /path/to/your/storage:/data1:ro \
+  -e SCAN_PATH_1=/data1 \
+  -e SCAN_NAME_1=Storage \
+  disk-usage
+```
+
+To update:
+
+```bash
+git pull
+docker build -t disk-usage .
+docker stop disk-usage
+docker rm disk-usage
 docker run -d \
   --name disk-usage \
   --restart unless-stopped \
