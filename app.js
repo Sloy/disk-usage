@@ -242,14 +242,29 @@ function Carousel({ roots, rootId, trees, selectedSorted, selectedFreeSpace,
   const mountedRef = useRef(false);
   const [overflow, setOverflow] = useState({ left: false, right: false });
 
+  // Computed from the known *final* slot sizes rather than measured from the
+  // live DOM: right after a selection change, the selected/deselected slots
+  // are still mid-resize (their width transition just started), so reading
+  // offsetLeft/offsetWidth at that moment captures a stale, in-between size
+  // and locks the track to the wrong target — it only looked right on the
+  // very first mount, where there's no resize transition racing it. These
+  // constants must match `.carousel-track { gap }` and
+  // `.donut-slot.selected { margin }` in index.html.
+  const GAP = 24, SEL_MARGIN = 28;
   const measure = () => {
     const track = trackRef.current, viewport = viewportRef.current;
     if (!track || !viewport) return;
-    const selEl = track.children[selectedIndex];
-    if (!selEl) return;
-    const selCenter = selEl.offsetLeft + selEl.offsetWidth / 2;
+    let pos = 0, selCenter = 0;
+    roots.forEach((r, i) => {
+      const w = i === selectedIndex ? BIG_SIZE : THUMB_SIZE;
+      const m = i === selectedIndex ? SEL_MARGIN : 0;
+      pos += m;
+      if (i === selectedIndex) selCenter = pos + w / 2;
+      pos += w + m;
+      if (i < roots.length - 1) pos += GAP;
+    });
     track.style.transform = `translateX(${-selCenter}px)`;
-    const overflowing = track.scrollWidth > viewport.clientWidth + 1;
+    const overflowing = pos > viewport.clientWidth + 1;
     setOverflow({
       left: overflowing && selectedIndex > 0,
       right: overflowing && selectedIndex < roots.length - 1,
