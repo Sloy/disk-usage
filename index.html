@@ -159,9 +159,85 @@
     text-align: center;
     padding: 20px;
   }
-  .root-switcher { background:#0f172a; color:#e2e8f0; border:1px solid #334155;
-    border-radius:6px; padding:6px 10px; font-family:'DM Sans',sans-serif; font-size:13px; }
   .file-row.active { background:#1e293b; }
+
+  /* Root carousel — bleeds wider than the 640px column; everything else stays put. */
+  .carousel-viewport {
+    position: relative;
+    left: 50%;
+    transform: translateX(-50%);
+    width: min(90vw, 1100px);
+    overflow: hidden;
+    height: 300px;
+    margin-bottom: 32px;
+  }
+  .carousel-track {
+    position: absolute;
+    top: 0;
+    left: 50%;
+    height: 100%;
+    display: flex;
+    align-items: center;
+    gap: 24px;
+    transition: transform 0.45s cubic-bezier(.4,0,.2,1);
+  }
+  .donut-slot {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 8px;
+    flex: 0 0 auto;
+  }
+  .donut-slot.selected { margin: 0 28px; }
+  .donut-slot:not(.selected) { cursor: pointer; }
+  .donut-slot:not(.selected):hover svg { filter: brightness(1.15); }
+  .donut-ring {
+    border-radius: 50%;
+    transition: width 0.45s cubic-bezier(.4,0,.2,1), height 0.45s cubic-bezier(.4,0,.2,1);
+  }
+  .donut-ring.placeholder { background: #1e293b; opacity: 0.5; cursor: pointer; }
+  .donut-label {
+    font-size: 12px;
+    color: #94a3b8;
+    white-space: nowrap;
+    max-width: 100px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .edge-fade {
+    position: absolute;
+    top: 0; bottom: 0;
+    width: 56px;
+    pointer-events: none;
+    opacity: 0;
+    transition: opacity 0.3s;
+    z-index: 2;
+  }
+  .edge-fade.left { left: 0; background: linear-gradient(90deg, #0f172a, transparent); }
+  .edge-fade.right { right: 0; background: linear-gradient(270deg, #0f172a, transparent); }
+  .edge-fade.show { opacity: 1; }
+  .chevron {
+    position: absolute;
+    top: 50%;
+    transform: translateY(-50%);
+    width: 28px;
+    height: 28px;
+    border-radius: 50%;
+    background: #1e293b;
+    border: 1px solid #334155;
+    color: #94a3b8;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    font-size: 14px;
+    font-family: 'DM Sans', sans-serif;
+    z-index: 3;
+    transition: color 0.2s, border-color 0.2s;
+  }
+  .chevron:hover { color: #f8fafc; border-color: #6366f1; }
+  .chevron.left { left: 8px; }
+  .chevron.right { right: 8px; }
 </style>
 </head>
 <body>

@@ -8,6 +8,8 @@ const COLORS = [
 ];
 const FREE_COLOR = "#1e293b";
 const FREE_KEY = -1;
+const BIG_SIZE = 280;
+const THUMB_SIZE = 76;
 
 function formatSize(bytes) {
   if (bytes >= 1024 ** 4) return (bytes / 1024 ** 4).toFixed(2) + " TB";
@@ -52,38 +54,30 @@ function resolveNode(tree, namePath) {
   return { node, resolvedPath };
 }
 
+function sortedChildren(node) {
+  return [...((node && node.children) || [])].sort((a, b) => b.size - a.size);
+}
+
 function App() {
   const [roots, setRoots] = useState(null);
   const [rootId, setRootId] = useState(null);
-  const [tree, setTree] = useState(null);
+  const [trees, setTrees] = useState({}); // { [rootId]: tree }
   const [namePath, setNamePath] = useState([]);
   const [hovered, setHovered] = useState(null);
-  const [scanning, setScanning] = useState(false);
-  const [lastScan, setLastScan] = useState(null);
   const [error, setError] = useState(null);
 
-  // Load roots list once.
-  useEffect(() => {
-    fetch("/api/roots").then(r => r.json()).then(rs => {
-      setRoots(rs);
-      const wanted = parseHash().rootId;
-      const match = rs.find(r => r.id === wanted) || rs[0];
-      if (match) setRootId(match.id);
-    }).catch(e => setError("Could not load roots: " + e.message));
-  }, []);
+  const treesRef = useRef({});
+  useEffect(() => { treesRef.current = trees; }, [trees]);
 
   const currentRoot = roots && roots.find(r => r.id === rootId);
+  const tree = rootId != null ? trees[rootId] : null;
 
-  // Load current root's data whenever rootId changes.
-  const loadData = useCallback(() => {
-    if (rootId == null) return;
-    fetch(`data-${rootId}.json?t=` + Date.now())
+  const loadRootData = useCallback((id) => {
+    return fetch(`data-${id}.json?t=` + Date.now())
       .then(r => { if (!r.ok) throw new Error("no data yet"); return r.json(); })
-      .then(setTree)
-      .catch(() => setTree(null));
-  }, [rootId]);
-
-  useEffect(() => { loadData(); }, [loadData]);
+      .then(t => setTrees(prev => ({ ...prev, [id]: t })))
+      .catch(() => {});
+  }, []);
 
   // Sync namePath from hash on load + back/forward.
   useEffect(() => {
@@ -93,43 +87,58 @@ function App() {
     return () => window.removeEventListener("hashchange", apply);
   }, []);
 
-  // Poll status for the current root; reload data when a scan completes.
-  const wasScanning = useRef(false);
+  // Poll /api/roots (covers every root's scanning/last_scan in one call). On
+  // first success, pick the initial rootId from the hash. On every tick,
+  // reload a root's tree if its scan just finished, or if we're still missing
+  // data it already has (covers both "rescan completed" and "initial bulk load").
+  const wasScanningRef = useRef({});
+  const initializedRef = useRef(false);
   useEffect(() => {
-    if (rootId == null) return;
-    const tick = () => fetch(`/api/status?root=${rootId}`).then(r => r.json())
-      .then(s => {
-        setScanning(s.scanning);
-        setLastScan(s.last_scan);
-        if (wasScanning.current && !s.scanning) loadData(); // stays on namePath
-        wasScanning.current = s.scanning;
-      }).catch(() => {});
+    const tick = () => fetch("/api/roots").then(r => r.json()).then(rs => {
+      setRoots(rs);
+      if (!initializedRef.current) {
+        initializedRef.current = true;
+        const wanted = parseHash().rootId;
+        const match = rs.find(r => r.id === wanted) || rs[0];
+        if (match) setRootId(match.id);
+      }
+      rs.forEach(r => {
+        const finished = wasScanningRef.current[r.id] && !r.scanning;
+        const missing = !treesRef.current[r.id] && r.last_scan;
+        if (finished || missing) loadRootData(r.id);
+        wasScanningRef.current[r.id] = r.scanning;
+      });
+    }).catch(e => { if (!initializedRef.current) setError("Could not load roots: " + e.message); });
     tick();
     const iv = setInterval(tick, 3000);
     return () => clearInterval(iv);
-  }, [rootId, loadData]);
+  }, [loadRootData]);
 
+  const [optimisticScanning, setOptimisticScanning] = useState({});
   const triggerRescan = () => {
-    setScanning(true);
-    wasScanning.current = true;
+    setOptimisticScanning(prev => ({ ...prev, [rootId]: true }));
+    wasScanningRef.current[rootId] = true;
     fetch("/api/rescan", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ root: rootId }),
-    }).catch(() => setScanning(false));
+    }).catch(() => setOptimisticScanning(prev => ({ ...prev, [rootId]: false })));
   };
 
   if (error) return html`<div className="error"><span>⚠️</span><span>${error}</span></div>`;
   if (!roots || rootId == null) return html`<div className="loading"><div className="spinner"/><span>Loading…</span></div>`;
 
+  const scanning = !!(optimisticScanning[rootId] || (currentRoot && currentRoot.scanning));
+  const lastScan = currentRoot && currentRoot.last_scan;
+
   const resolved = tree ? resolveNode(tree, namePath) : null;
   const currentNode = resolved ? resolved.node : null;
 
-  // Navigation helpers (used by later tasks). Hash is keyed by numeric root id.
   const navigateTo = (newPath) => {
     location.hash = buildHash(rootId, newPath);
   };
-  const switchRoot = (id) => {
+  const selectRoot = (id) => {
+    if (id === rootId) return;
     setRootId(id);
     setNamePath([]);
     location.hash = buildHash(id, []);
@@ -143,7 +152,6 @@ function App() {
           <p className="subtitle">${currentNode ? formatSize((currentNode.children||[]).reduce((s,c)=>s+c.size,0)) + " used" : "No scan yet"}</p>
         </div>
         <div style=${{display:"flex", gap:"8px", alignItems:"center"}}>
-          <${RootSwitcher} roots=${roots} rootId=${rootId} onSwitch=${switchRoot}/>
           <button className=${"rescan-btn " + (scanning ? "scanning" : "")}
             onClick=${triggerRescan} disabled=${scanning}>
             <span className="icon">↻</span>${scanning ? "Scanning…" : "Rescan"}
@@ -152,10 +160,12 @@ function App() {
       </div>
       ${!tree && html`<p className="scan-time">No data for this disk yet — a scan is running.</p>`}
       ${currentNode && html`<${Body}
-        root=${currentRoot} tree=${tree} currentNode=${currentNode}
+        root=${currentRoot} roots=${roots} rootId=${rootId} trees=${trees}
+        currentNode=${currentNode}
         namePath=${resolved.resolvedPath}
         hovered=${hovered} setHovered=${setHovered}
         navigateTo=${navigateTo}
+        onSelectRoot=${selectRoot}
         lastScan=${lastScan}
         freeSpace=${resolved.resolvedPath.length === 0 ? tree.freeSpace : null} />`}
       <div style=${{marginTop:"48px",paddingTop:"16px",borderTop:"1px solid #1e293b",textAlign:"right"}}>
@@ -163,14 +173,6 @@ function App() {
           style=${{fontSize:"12px",color:"#475569",textDecoration:"none"}}>Made by Rafa with ♥︎</a>
       </div>
     </div>`;
-}
-
-function RootSwitcher({ roots, rootId, onSwitch }) {
-  if (roots.length < 2) return null;
-  return html`<select className="root-switcher" value=${rootId}
-    onChange=${e => onSwitch(Number(e.target.value))}>
-    ${roots.map(r => html`<option key=${r.id} value=${r.id}>${r.name}</option>`)}
-  </select>`;
 }
 
 function Breadcrumbs({ rootName, namePath, onNavigate }) {
@@ -208,15 +210,23 @@ function FileList({ items, hovered, setHovered, onItemClick }) {
   </div>`;
 }
 
-function Body({ root, currentNode, namePath, hovered, setHovered, navigateTo,
-                lastScan, freeSpace }) {
-  const sorted = [...(currentNode.children || [])].sort((a, b) => b.size - a.size);
+function Body({ root, roots, rootId, trees, currentNode, namePath, hovered, setHovered,
+                navigateTo, onSelectRoot, lastScan, freeSpace }) {
+  const sorted = sortedChildren(currentNode);
   const enterDir = (item) => navigateTo([...namePath, item.name]);
+  const multiRoot = roots.length >= 2;
   return html`
     <${Breadcrumbs} rootName=${root.name} namePath=${namePath}
       onNavigate=${(p) => navigateTo(p)}/>
-    <${PieChart} items=${sorted} freeSpace=${freeSpace}
-      hovered=${hovered} setHovered=${setHovered} onSliceClick=${enterDir}/>
+    ${multiRoot
+      ? html`<${Carousel} roots=${roots} rootId=${rootId} trees=${trees}
+          selectedSorted=${sorted} selectedFreeSpace=${freeSpace}
+          hovered=${hovered} setHovered=${setHovered}
+          onSelect=${onSelectRoot} onSliceClick=${enterDir}/>`
+      : html`<div className="chart-container">
+          <${PieChart} items=${sorted} freeSpace=${freeSpace} size=${BIG_SIZE} interactive=${true}
+            hovered=${hovered} setHovered=${setHovered} onSliceClick=${enterDir}/>
+        </div>`}
     ${lastScan && html`<p className="scan-time">Last scan: ${timeAgo(lastScan)}</p>`}
     ${namePath.length > 0 && html`<div className="back-row"
       onClick=${() => navigateTo(namePath.slice(0, -1))}><span>←</span><span>..</span></div>`}
@@ -224,8 +234,90 @@ function Body({ root, currentNode, namePath, hovered, setHovered, navigateTo,
       onItemClick=${enterDir}/>`;
 }
 
-function PieChart({ items, freeSpace, hovered, setHovered, onSliceClick }) {
-  const size = 280, cx = 140, cy = 140, outerR = 130, innerR = 75;
+function Carousel({ roots, rootId, trees, selectedSorted, selectedFreeSpace,
+                     hovered, setHovered, onSelect, onSliceClick }) {
+  const selectedIndex = roots.findIndex(r => r.id === rootId);
+  const trackRef = useRef(null);
+  const viewportRef = useRef(null);
+  const mountedRef = useRef(false);
+  const [overflow, setOverflow] = useState({ left: false, right: false });
+
+  const measure = () => {
+    const track = trackRef.current, viewport = viewportRef.current;
+    if (!track || !viewport) return;
+    const selEl = track.children[selectedIndex];
+    if (!selEl) return;
+    const selCenter = selEl.offsetLeft + selEl.offsetWidth / 2;
+    track.style.transform = `translateX(${-selCenter}px)`;
+    const overflowing = track.scrollWidth > viewport.clientWidth + 1;
+    setOverflow({
+      left: overflowing && selectedIndex > 0,
+      right: overflowing && selectedIndex < roots.length - 1,
+    });
+  };
+
+  useEffect(() => {
+    const track = trackRef.current;
+    if (!track) return;
+    if (!mountedRef.current) {
+      // Skip the transition for the very first layout so donuts don't slide
+      // in from translateX(0) on page load.
+      track.style.transition = "none";
+      measure();
+      void track.offsetHeight; // force reflow so "none" applies before we clear it
+      track.style.transition = "";
+      mountedRef.current = true;
+    } else {
+      measure();
+    }
+    // eslint-disable-next-line
+  }, [selectedIndex, roots.length]);
+
+  useEffect(() => {
+    window.addEventListener("resize", measure);
+    return () => window.removeEventListener("resize", measure);
+    // eslint-disable-next-line
+  }, [selectedIndex, roots.length]);
+
+  const step = (delta) => {
+    const next = roots[selectedIndex + delta];
+    if (next) onSelect(next.id);
+  };
+
+  return html`
+    <div className="carousel-viewport" ref=${viewportRef}>
+      <div className="carousel-track" ref=${trackRef}>
+        ${roots.map((r, i) => {
+          const isSel = i === selectedIndex;
+          const t = trees[r.id];
+          const sorted = isSel ? selectedSorted : sortedChildren(t);
+          const freeSpace = isSel ? selectedFreeSpace : (t ? t.freeSpace : 0);
+          const size = isSel ? BIG_SIZE : THUMB_SIZE;
+          return html`<div key=${r.id} className=${"donut-slot" + (isSel ? " selected" : "")}>
+            ${t
+              ? html`<${PieChart} items=${sorted} freeSpace=${freeSpace}
+                  size=${size} interactive=${isSel}
+                  hovered=${isSel ? hovered : null}
+                  setHovered=${isSel ? setHovered : (() => {})}
+                  onSliceClick=${isSel ? onSliceClick : undefined}
+                  onSelect=${() => onSelect(r.id)}/>`
+              : html`<div className="donut-ring placeholder"
+                  style=${{ width: size + "px", height: size + "px" }}
+                  onClick=${() => onSelect(r.id)}></div>`}
+            ${!isSel && html`<div className="donut-label">${r.name}</div>`}
+          </div>`;
+        })}
+      </div>
+      <div className=${"edge-fade left" + (overflow.left ? " show" : "")}></div>
+      <div className=${"edge-fade right" + (overflow.right ? " show" : "")}></div>
+      ${overflow.left && html`<button className="chevron left" onClick=${() => step(-1)}>‹</button>`}
+      ${overflow.right && html`<button className="chevron right" onClick=${() => step(1)}>›</button>`}
+    </div>`;
+}
+
+function PieChart({ items, freeSpace, hovered, setHovered, onSliceClick,
+                     size = BIG_SIZE, interactive = true, onSelect }) {
+  const cx = 140, cy = 140, outerR = 130, innerR = 75; // fixed internal geometry; CSS drives displayed size
   const total = items.reduce((s, it) => s + it.size, 0) + (freeSpace || 0) || 1;
 
   // Build target slices (keyed by list index; free slice = FREE_KEY).
@@ -288,7 +380,7 @@ function PieChart({ items, freeSpace, hovered, setHovered, onSliceClick }) {
   }, [sig]);
 
   const arc = (s) => {
-    const r = hovered === s.key ? outerR + 6 : outerR;
+    const r = (interactive && hovered === s.key) ? outerR + 6 : outerR;
     const a0 = s.start, a1 = s.start + s.sweep;
     const x1 = cx + Math.cos(a0)*r, y1 = cy + Math.sin(a0)*r;
     const x2 = cx + Math.cos(a1)*r, y2 = cy + Math.sin(a1)*r;
@@ -298,29 +390,31 @@ function PieChart({ items, freeSpace, hovered, setHovered, onSliceClick }) {
     return `M ${ix1} ${iy1} L ${x1} ${y1} A ${r} ${r} 0 ${la} 1 ${x2} ${y2} L ${ix2} ${iy2} A ${innerR} ${innerR} 0 ${la} 0 ${ix1} ${iy1}`;
   };
 
-  const hi = hovered != null
+  const hi = interactive && hovered != null
     ? (frame.find(s => s.key === hovered) || {}).item
     : null;
   const usedTotal = total - (freeSpace || 0);
 
-  return html`<div className="chart-container">
-    <svg width=${size} height=${size} viewBox=${`0 0 ${size} ${size}`}>
+  return html`<svg viewBox="0 0 280 280"
+      style=${{ width: size + "px", height: size + "px",
+        transition: "width 0.45s cubic-bezier(.4,0,.2,1), height 0.45s cubic-bezier(.4,0,.2,1)",
+        cursor: interactive ? "default" : "pointer" }}
+      onClick=${!interactive ? onSelect : undefined}>
       ${frame.map(s => html`<path key=${s.key} d=${arc(s)} fill=${s.color}
         stroke="#0f172a" strokeWidth="2"
-        style=${{cursor: (s.item && s.item.children) ? "pointer" : "default",
-          opacity: hovered !== null && hovered !== s.key ? 0.45 : 1,
+        style=${{cursor: interactive ? ((s.item && s.item.children) ? "pointer" : "default") : "inherit",
+          opacity: interactive && hovered !== null && hovered !== s.key ? 0.45 : 1,
           transition: "opacity 0.2s"}}
-        onMouseEnter=${() => setHovered(s.key)}
-        onMouseLeave=${() => setHovered(null)}
-        onClick=${() => s.item && s.item.children && onSliceClick(s.item)}/>`)}
-      <text x=${cx} y=${cy-8} textAnchor="middle" fill="#e2e8f0"
+        onMouseEnter=${interactive ? () => setHovered(s.key) : undefined}
+        onMouseLeave=${interactive ? () => setHovered(null) : undefined}
+        onClick=${interactive ? () => s.item && s.item.children && onSliceClick(s.item) : undefined}/>`)}
+      ${interactive && html`<text x=${cx} y=${cy-8} textAnchor="middle" fill="#e2e8f0"
         style=${{fontSize:"13px", fontFamily:"'DM Sans',sans-serif"}}>
-        ${hi ? hi.name : "Total used"}</text>
-      <text x=${cx} y=${cy+14} textAnchor="middle" fill="#f8fafc"
+        ${hi ? hi.name : "Total used"}</text>`}
+      ${interactive && html`<text x=${cx} y=${cy+14} textAnchor="middle" fill="#f8fafc"
         style=${{fontSize:"18px", fontWeight:600, fontFamily:"'DM Sans',sans-serif"}}>
-        ${hi ? formatSize(hi.size) : formatSize(usedTotal)}</text>
-    </svg>
-  </div>`;
+        ${hi ? formatSize(hi.size) : formatSize(usedTotal)}</text>`}
+    </svg>`;
 }
 
 ReactDOM.createRoot(document.getElementById("root")).render(html`<${App}/>`);
