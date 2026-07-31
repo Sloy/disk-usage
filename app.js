@@ -187,8 +187,8 @@ function Breadcrumbs({ rootName, namePath, onNavigate }) {
   </div>`;
 }
 
-function FileList({ items, hovered, setHovered, onItemClick }) {
-  const maxSize = Math.max(1, ...items.map(i => i.size));
+function FileList({ items, freeSpace, hovered, setHovered, onItemClick }) {
+  const maxSize = Math.max(1, ...items.map(i => i.size), freeSpace || 0);
   return html`<div>
     ${items.map((item, i) => {
       const isDir = !!item.children;
@@ -207,6 +207,18 @@ function FileList({ items, hovered, setHovered, onItemClick }) {
         <span className="file-size">${formatSize(item.size)}</span>
       </div>`;
     })}
+    ${freeSpace > 0 && html`<div key="free-space"
+      className=${"file-row " + (hovered === FREE_KEY ? "active" : "")}
+      onMouseEnter=${() => setHovered(FREE_KEY)} onMouseLeave=${() => setHovered(null)}>
+      <div className="file-name">
+        <span className="file-icon">◻</span>
+        <span className="file-label">Free space</span>
+      </div>
+      <div className="file-bar-container">
+        <div className="file-bar" style=${{width: (freeSpace / maxSize) * 100 + "%", background: FREE_COLOR}}/>
+      </div>
+      <span className="file-size">${formatSize(freeSpace)}</span>
+    </div>`}
   </div>`;
 }
 
@@ -230,7 +242,7 @@ function Body({ root, roots, rootId, trees, currentNode, namePath, hovered, setH
     ${lastScan && html`<p className="scan-time">Last scan: ${timeAgo(lastScan)}</p>`}
     ${namePath.length > 0 && html`<div className="back-row"
       onClick=${() => navigateTo(namePath.slice(0, -1))}><span>←</span><span>..</span></div>`}
-    <${FileList} items=${sorted} hovered=${hovered} setHovered=${setHovered}
+    <${FileList} items=${sorted} freeSpace=${freeSpace} hovered=${hovered} setHovered=${setHovered}
       onItemClick=${enterDir}/>`;
 }
 
@@ -429,6 +441,9 @@ function PieChart({ items, freeSpace, hovered, setHovered, onSliceClick,
       ${interactive && html`<text x=${cx} y=${cy+14} textAnchor="middle" fill="#f8fafc"
         style=${{fontSize:"18px", fontWeight:600, fontFamily:"'DM Sans',sans-serif"}}>
         ${hi ? formatSize(hi.size) : formatSize(usedTotal)}</text>`}
+      ${interactive && !hi && freeSpace > 0 && html`<text x=${cx} y=${cy+32} textAnchor="middle" fill="#94a3b8"
+        style=${{fontSize:"12px", fontFamily:"'DM Sans',sans-serif"}}>
+        ${Math.round((usedTotal / total) * 100)}%</text>`}
     </svg>`;
 }
 
