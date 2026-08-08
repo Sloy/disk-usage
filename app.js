@@ -149,7 +149,7 @@ function App() {
       <div className="header">
         <div>
           <h1>Disk Usage</h1>
-          <p className="subtitle">${currentNode ? formatSize((currentNode.children||[]).reduce((s,c)=>s+c.size,0)) + " used" : "No scan yet"}</p>
+          <p className="subtitle">${currentNode ? formatSize((currentNode.children||[]).reduce((s,c)=>s+c.size,0)) + " used" + (resolved.resolvedPath.length === 0 && tree.freeSpace != null ? " · " + formatSize(tree.freeSpace) + " free" : "") : "No scan yet"}</p>
         </div>
         <div style=${{display:"flex", gap:"8px", alignItems:"center"}}>
           <button className=${"rescan-btn " + (scanning ? "scanning" : "")}
